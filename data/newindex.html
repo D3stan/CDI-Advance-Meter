@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="description" content="ESP32 Remote Control with WebSocket">
+  <title>ESP32 remote control</title>
+</head>
+
+<body>
+    <div class="panel">
+        <div class="rpm-container">
+            <div id="status-led" class="led-red"></div>
+            <h1 id="counter">RPM: 0</h1>
+        </div>
+        <h1 id="maxrpm">MAX RPM: 0</h1>
+        <h1 id="advance">ADV: 0°</h1>
+        <div id="led" class="%STATE%"></div>
+        <button id="toggle">Toggle</button>
+    </div>
+</body>
+
+<script>
+var gateway = `ws://${window.location.hostname}/ws`;
+var websocket;
+var maxRPM = 0;
+var prevRPM = 0;
+var csvfields = ""
+
+
+// ----------------------------------------------------------------------------
+// Initialization
+// ----------------------------------------------------------------------------
+
+window.addEventListener('load', onLoad);
+
+function onLoad(event) {
+    initWebSocket();
+    initButton();
+}
+
+// ----------------------------------------------------------------------------
+// WebSocket handling
+// ----------------------------------------------------------------------------
+
+function initWebSocket() {
+    console.log('Trying to open a WebSocket connection...');
+    websocket = new WebSocket(gateway);
+    websocket.onopen    = onOpen;
+    websocket.onclose   = onClose;
+    websocket.onmessage = onMessage;
+}
+
+function onOpen(event) {
+    console.log('Connection opened');
+    document.getElementById('status-led').className = 'led-green';
+}
+
+function onClose(event) {
+    console.log('Connection closed');
+    document.getElementById('status-led').className = 'led-red';
+    setTimeout(initWebSocket, 2000);
+}
+
+function onMessage(event) {
+    let data = JSON.parse(event.data);
+    if (data.status)
+        document.getElementById('led').className = data.status;
+    if (data.rpm) {
+        if (data.rpm > maxRPM) maxRPM = data.rpm
+        document.getElementById('counter').textContent = "RPM: " + data.rpm;
+        document.getElementById('maxrpm').textContent = "MAX: " + maxRPM;
+
+        // logging
+        if (prevRPM < data.rpm) {
+            csvfields = csvfields.concat(data.rpm + ",")
+            if (data.adv > 0 && data.adv < 50) {
+                csvfields = csvfields.concat(data.adv + ",\n")
+            } else {
+                csvfields = csvfields.concat("-1,\n")
+            }
+            prevRPM = data.rpm
+        }
+    }
+    if (data.adv) {
+        document.getElementById('advance').textContent = "ADV: " + data.adv + "°";
+    }
+        
+}
+
+// ----------------------------------------------------------------------------
+// Button handling
+// ----------------------------------------------------------------------------
+
+function initButton() {
+    document.getElementById('toggle').addEventListener('click', onToggle);
+}
+
+function onToggle(event) {
+    websocket.send(JSON.stringify({'action':'toggle'}));
+    console.log(csvfields)
+}
+</script>
+
+<style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      height: 100%;
+      font-family: Roboto, sans-serif;
+      font-size: 12pt;
+      overflow: hidden;
+    }
+    
+    body {
+      display: grid;
+      grid-template-rows: 1fr;
+      align-items: center;
+      justify-items: center;
+    }
+    
+    .panel {
+      display: grid;
+      grid-gap: 3em;
+      justify-items: center;
+    }
+
+    .rpm-container {
+      display: flex;
+      align-items: center;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      margin-left: 10px;
+    }
+    
+    #led, .led-red, .led-green {
+      position: relative;
+      width: 5em;
+      height: 5em;
+      border: 2px solid #000;
+      border-radius: 2.5em;
+      box-shadow: 0 0.5em 1em rgba(102, 0, 0, 0.3);
+    }
+
+    #led {
+      background-image: radial-gradient(farthest-corner at 50% 20%, #b30000 0%, #330000 100%);
+    }
+
+    #led.on {
+      background-image: radial-gradient(farthest-corner at 50% 75%, red 0%, #990000 100%);
+      box-shadow: 0 1em 1.5em rgba(255, 0, 0, 0.5);
+    }
+
+    #led:after, .led-red:after, .led-green:after {
+      content: '';
+      position: absolute;
+      top: .3em;
+      left: 1em;
+      width: 60%;
+      height: 40%;
+      border-radius: 60%;
+      background-image: linear-gradient(rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.1));
+    }
+    
+    .led-red {
+      width: 1em;
+      height: 1em;
+      background-color: red;
+      border-radius: 50%;
+      margin-right: 10px;
+      box-shadow: 0 0.5em 1em rgba(102, 0, 0, 0.3);
+    }
+    
+    .led-green {
+      width: 1em;
+      height: 1em;
+      background-color: green;
+      border-radius: 50%;
+      margin-right: 10px;
+      box-shadow: 0 0.5em 1em rgba(0, 102, 0, 0.3);
+    }
+    
+    button {
+      padding: .5em .75em;
+      font-size: 1.2rem;
+      color: #fff;
+      text-shadow: 0 -1px 1px #000;
+      border: 1px solid #000;
+      border-radius: .5em;
+      background-image: linear-gradient(#2e3538, #73848c);
+      box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.5), 0 0.2em 0.4em rgba(0, 0, 0, 0.4);
+      outline: none;
+    }
+    
+    button:active {
+      transform: translateY(2px);
+    }
+</style>
+
+</html>
