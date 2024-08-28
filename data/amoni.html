@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Responsive Real-Time Line Chart with Crosshairs</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #2b2b2b; /* Dark background */
+            color: #d1d1d1; /* Light text for visibility */
+        }
+        #chartContainer {
+            width: 80%;
+            max-width: 800px;
+            max-height: 80%;
+            aspect-ratio: 4 / 3;
+            border: 1px solid #6b6b6b; /* Nardo Grey for border */
+            background-color: #3c3c3c; /* Slightly lighter dark background */
+            position: relative;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.5);
+        }
+        canvas {
+            width: 100%;
+            height: 100%;
+
+            /* main curve */
+            --line-color: #ab27fe; /* Soft Purple line color */
+            --line-width: 3; /* Line thickness */
+            --line-dash: 0; /* 0 = dashes by default */
+            
+            /* gridline */
+            --gridline-color: #656565;
+            --gridtext-color: #ffffff;
+            --gridtext-font: 14px Arial;
+            --gridline-width: 1; /* Line thickness */
+            --gridline-dash: 1; /* 0 = dashes by default */
+            --gridline-count: 5;
+
+            /* tip line */
+            --tipline-color: #e3e3e3;
+            --tipline-width: 1; /* Line thickness */
+            --tipline-dash: 5; /* 0 = dashes by default */
+        }
+        #tooltip {
+            position: absolute;
+            background-color: rgba(128, 90, 213, 0.8); /* Soft Purple with transparency */
+            color: white;
+            padding: 5px;
+            border-radius: 3px;
+            font-size: 12px;
+            display: none;
+            
+        }
+    </style>
+</head>
+<body>
+
+<div id="chartContainer">
+    <canvas id="chartCanvas"></canvas>
+    <div id="tooltip"></div>
+</div>
+
+<script>
+    const container = document.getElementById('chartContainer');
+    const canvas = document.getElementById('chartCanvas');
+    const ctx = canvas.getContext('2d');
+    const tooltip = document.getElementById('tooltip');
+
+    let csvSample = "1357,16,\n1605,28,\n2032,32,\n2857,35,\n3274,34,\n3598,34,\n3641,33,\n3710,33,\n3967,33,\n4142,32,\n4306,31,\n4344,32,\n4583,31,\n5050,30,\n5259,30,\n5567,29,\n5826,28,\n6312,27,\n6923,26,\n8240,22,\n8963,22,\n9419,21,\n9689,19,\n9935,18,\n10328,18,\n10429,19,\n10447,17,\n10462,17,\n10515,17,\n10699,16,\n10716,18,\n10768,17,\n10932,18,\n11043,16,\n"
+    let csvData = ""; // This will hold your CSV string
+    let dataPoints = [];
+
+    // Ensure the canvas matches the container size
+    function resizeCanvas() {
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
+        updateChart()
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('orientationchange', resizeCanvas);
+    resizeCanvas(); // Initial resize
+
+    
+
+    function parseCSV(data) {
+        // Split the string by newline and then by commas
+        const rows = data.trim().split('\n');
+        return rows.map(row => {
+            const [rpm, adv] = row.split(',').map(Number);
+            return { rpm, adv };
+        });
+    }
+
+    function drawChart() {
+        // Clear the canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Set up scales
+        const maxX = Math.ceil(Math.max(...dataPoints.map(d => d.rpm)) / 100) * 100 || 6000; // Round up to the nearest 100
+        const maxY = Math.max(...dataPoints.map(d => d.adv)) || 50;   // Default maxY if no data
+        const minX = 0;
+        const minY = 0;
+
+        // Margins for labels and padding
+        const margin = 50;
+        const chartWidth = canvas.width - 2 * margin;
+        const chartHeight = canvas.height - 2 * margin;
+
+        // Draw grid lines and labels
+        const gridLineCount = parseFloat(getComputedStyle(canvas).getPropertyValue('--gridline-count')) || 5;;
+        ctx.strokeStyle = getComputedStyle(canvas).getPropertyValue('--gridline-color') || 'grey';
+        ctx.lineWidth = parseFloat(getComputedStyle(canvas).getPropertyValue('--gridline-width')) || 1;
+        ctx.setLineDash(getComputedStyle(canvas).getPropertyValue('--gridline-dash').split(',').map(Number) || []);
+        ctx.fillStyle = getComputedStyle(canvas).getPropertyValue('--gridtext-color') || 'white';
+        ctx.font = getComputedStyle(canvas).getPropertyValue('--gridtext-font') || '14px Arial';
+
+        // Y-axis grid lines and labels (ADV)
+        for (let i = 0; i <= gridLineCount; i++) {
+            const y = margin + (i * chartHeight) / gridLineCount;
+            const advLabel = maxY - (i * maxY) / gridLineCount;
+            ctx.beginPath();
+            ctx.moveTo(margin, y);
+            ctx.lineTo(margin + chartWidth, y);
+            ctx.stroke();
+            ctx.fillText(advLabel.toFixed(0), margin - 30, y + 5);
+        }
+
+        // X-axis grid lines and labels (RPM)
+        for (let i = 0; i <= gridLineCount; i++) {
+            const x = margin + (i * chartWidth) / gridLineCount;
+            const rpmLabel = Math.round((i * maxX) / gridLineCount / 100) * 100; // Round to nearest 100
+            ctx.beginPath();
+            ctx.moveTo(x, margin);
+            ctx.lineTo(x, margin + chartHeight);
+            ctx.stroke();
+            ctx.fillText(rpmLabel.toFixed(0), x - 15, margin + chartHeight + 25);
+        }
+
+        // Axis Labels
+        ctx.fillText("ADV", margin - 40, margin - 10);
+        ctx.fillText("RPM", margin + chartWidth + 10, margin + chartHeight + 35);
+
+        // Draw the data line with CSS properties
+        ctx.strokeStyle = getComputedStyle(canvas).getPropertyValue('--line-color') || 'white';
+        ctx.lineWidth = parseFloat(getComputedStyle(canvas).getPropertyValue('--line-width')) || 2;
+        ctx.setLineDash(getComputedStyle(canvas).getPropertyValue('--line-dash').split(',').map(Number) || []);
+
+        ctx.beginPath();
+        dataPoints.forEach((point, index) => {
+            const x = margin + ((point.rpm - minX) / (maxX - minX)) * chartWidth; // Scale to canvas
+            const y = margin + chartHeight - ((point.adv - minY) / (maxY - minY)) * chartHeight; // Scale to canvas
+
+            if (index === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+            point.canvasX = x;
+            point.canvasY = y;
+        });
+        ctx.stroke();
+    }
+
+
+    function getNearestDataPoint(mouseX, mouseY) {
+        const margin = 50;
+        const chartWidth = canvas.width - 2 * margin;
+        const chartHeight = canvas.height - 2 * margin;
+
+        return dataPoints.reduce((nearest, point) => {
+            const dist = Math.hypot(point.canvasX - mouseX, point.canvasY - mouseY);
+            return dist < nearest.dist ? { point, dist } : nearest;
+        }, { point: null, dist: Infinity }).point;
+    }
+
+    function drawCrosshair(point) {
+        if (!point) return;
+
+        const margin = 50;
+        const chartWidth = canvas.width - 2 * margin;
+        const chartHeight = canvas.height - 2 * margin;
+
+        // Draw the tooltip lines with CSS properties
+        ctx.strokeStyle = getComputedStyle(canvas).getPropertyValue('--tipline-color') || 'grey';
+        ctx.lineWidth = parseFloat(getComputedStyle(canvas).getPropertyValue('--tipline-width')) || 2;
+        ctx.setLineDash(getComputedStyle(canvas).getPropertyValue('--tipline-dash').split(',').map(Number) || []);
+
+        ctx.setLineDash([5, 5]);
+
+        // Horizontal line (ADV)
+        ctx.beginPath();
+        ctx.moveTo(margin, point.canvasY);
+        ctx.lineTo(margin + chartWidth, point.canvasY);
+        ctx.stroke();
+
+        // Vertical line (RPM)
+        ctx.beginPath();
+        ctx.moveTo(point.canvasX, margin);
+        ctx.lineTo(point.canvasX, margin + chartHeight);
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+
+        // Show tooltip
+        tooltip.style.display = 'block';
+        tooltip.style.left = `${point.canvasX + 15}px`;
+        tooltip.style.top = `${point.canvasY - 25}px`;
+        tooltip.textContent = `RPM: ${point.rpm}, ADV: ${point.adv}`;
+    }
+
+    function hideTooltip() {
+        tooltip.style.display = 'none';
+    }
+
+    function handleMouseMove(event) {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = event.clientX - rect.left;
+        const mouseY = event.clientY - rect.top;
+        const nearestPoint = getNearestDataPoint(mouseX, mouseY);
+
+        drawChart();
+        drawCrosshair(nearestPoint);
+    }
+
+    function handleTouchMove(event) {
+        const rect = canvas.getBoundingClientRect();
+        const touch = event.touches[0];
+        const touchX = touch.clientX - rect.left;
+        const touchY = touch.clientY - rect.top;
+        const nearestPoint = getNearestDataPoint(touchX, touchY);
+
+        drawChart();
+        drawCrosshair(nearestPoint);
+    }
+
+    function updateChart() {
+        dataPoints = parseCSV(csvData);
+        drawChart();
+    }
+
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('touchmove', handleTouchMove);
+    canvas.addEventListener('mouseout', hideTooltip);
+    canvas.addEventListener('touchend', hideTooltip);
+
+    var csvSampleCounter = 0
+    // Simulate the real-time data update
+    setInterval(() => {
+        // Example update: you would replace this with your actual data update logic
+        
+        var samples = csvSample.split("\n")
+        if (!samples[csvSampleCounter]) return
+        let newRPM = samples[csvSampleCounter].split(",")[0]
+        let newADV = samples[csvSampleCounter].split(",")[1]
+        csvData += `${newRPM},${newADV},\n`;
+        
+        csvSampleCounter++
+        updateChart();
+    }, 100);
+
+</script>
+
+</body>
+</html>

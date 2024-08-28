@@ -161,6 +161,8 @@ function graphPage() {
     document.getElementById("download-button").removeAttribute("style")
     document.body.style.height = "80%"
     resizeCanvas(); // Initial resize
+    lol()
+    csvSampleCounter = 0;
 }
 
 function mainPage() {
@@ -183,6 +185,7 @@ const container = document.getElementById('chartContainer');
 const canvas = document.getElementById('chartCanvas');
 const ctx = canvas.getContext('2d');
 const tooltip = document.getElementById('tooltip');
+let csvSample = "1357,16,\n1605,28,\n2032,32,\n2857,35,\n3274,34,\n3598,34,\n3641,33,\n3710,33,\n3967,33,\n4142,32,\n4306,31,\n4344,32,\n4583,31,\n5050,30,\n5259,30,\n5567,29,\n5826,28,\n6312,27,\n6923,26,\n8240,22,\n8963,22,\n9419,21,\n9689,19,\n9935,18,\n10328,18,\n10429,19,\n10447,17,\n10462,17,\n10515,17,\n10699,16,\n10716,18,\n10768,17,\n10932,18,\n11043,16,\n"
 
 let dataPoints = [];
 // Ensure the canvas matches the container size
@@ -327,6 +330,24 @@ canvas.addEventListener('mousemove', handleMouseMove);
 canvas.addEventListener('touchmove', handleTouchMove);
 canvas.addEventListener('mouseout', hideTooltip);
 canvas.addEventListener('touchend', hideTooltip);
+var csvSampleCounter = 0
+
+
+// Simulate the real-time data update
+function lol() {
+    setInterval(() => {
+    // Example update: you would replace this with your actual data update logic
+    
+    var samples = csvSample.split("\n")
+    if (!samples[csvSampleCounter]) return
+    let newRPM = samples[csvSampleCounter].split(",")[0]
+    let newADV = samples[csvSampleCounter].split(",")[1]
+    csvfields += `${newRPM},${newADV},\n`;
+    
+    csvSampleCounter++
+    updateChart();
+}, 100);
+}
 
 
 </script>
