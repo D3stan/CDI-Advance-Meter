@@ -11,8 +11,8 @@
 // ----------------------------------------------------------------------------
 
 #define LED_PIN      15
-#define PICKUP       13 
-#define INDUCTIVE_IN  4
+#define PICKUP       2 
+#define INDUCTIVE_IN  11
 #define DEFAULT_STATIC_ADV   36
 #define HTTP_PORT    80
 
@@ -39,6 +39,10 @@ unsigned long displayMillis = 0;
 unsigned long revolutionTime = 0;
 unsigned long advance = 0;
 bool advanceAlreadyCalculated = true;
+
+// LED flash timing
+unsigned long ledFlashTime = 0;
+const unsigned long LED_FLASH_DURATION = 50; // milliseconds
 
 // Preferences
 Preferences preferences;
@@ -144,6 +148,8 @@ IRAM_ATTR void sparkSignalDetected() {
     if (advanceAlreadyCalculated == false && lastMicros != currentMicros && revolutionTime >= 500) {
         advance = STATIC_ADV - ((360 * (currentMicros - lastMicros)) / revolutionTime);
         advanceAlreadyCalculated = true;
+        onboard_led.on = false;
+        ledFlashTime = millis();
     }
     
 }
@@ -311,8 +317,8 @@ void setup() {
     pinMode(led.pin,         OUTPUT);
     pinMode(PICKUP,          INPUT);
     pinMode(INDUCTIVE_IN,    INPUT);
-    attachInterrupt(digitalPinToInterrupt(PICKUP), pickupSignalDetected, FALLING);
-    attachInterrupt(digitalPinToInterrupt(INDUCTIVE_IN), sparkSignalDetected, FALLING);
+    attachInterrupt(digitalPinToInterrupt(PICKUP), pickupSignalDetected, RISING);
+    attachInterrupt(digitalPinToInterrupt(INDUCTIVE_IN), sparkSignalDetected, RISING);
 
     Serial.begin(115200); delay(500);
 
@@ -330,12 +336,15 @@ void setup() {
 void loop() {
     ws.cleanupClients();
     
-    onboard_led.on = millis() % 1000 < 500;
+    // LED flashes off on spark detection, then turns back on
+    if (!onboard_led.on && millis() - ledFlashTime >= LED_FLASH_DURATION) {
+        onboard_led.on = true;
+    }
+    
     if (millis() - displayMillis >= 20) {
         Serial.printf("RPM: %ld       ADV: %ld\n", RPM, advance);
         updateRPM(RPM, advance);
     }
 
-    led.update();
     onboard_led.update();
 }
